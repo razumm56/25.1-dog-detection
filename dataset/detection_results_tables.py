@@ -26,10 +26,10 @@ class Label(Base):
     __tablename__ = 'label'
     id = Column(Integer, primary_key=True, autoincrement=True)
     frame_id = Column(Integer, ForeignKey('frame.id', ondelete='CASCADE'), nullable=False)
-    x = Column(Integer, nullable=False)
-    y = Column(Integer, nullable=False)
-    width = Column(Integer, nullable=False)
-    height = Column(Integer, nullable=False)
+    x1 = Column(Integer, nullable=False)
+    y1 = Column(Integer, nullable=False)
+    x2 = Column(Integer, nullable=False)
+    y2 = Column(Integer, nullable=False)
     misc = Column(JSON, nullable=True)
 
     frame = relationship("Frame", back_populates="label")
