@@ -1,3 +1,15 @@
-dataset/.env
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Environment
+.venv/
+.env
+
+# IDE
 .idea
-dataset/__pycache__/
+.vscode
+
+# Log files
+*.log
+
