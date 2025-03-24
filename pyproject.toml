@@ -1,0 +1,13 @@
+[project]
+name = "Stray-Dog-Detection"
+version = "0.1.0"
+description = "Project from Sber to search for stray dogs"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "dotenv>=0.9.9",
+    "jupyterlab>=4.3.6",
+    "opencv-python>=4.11.0.86",
+    "psycopg2>=2.9.10",
+    "sqlalchemy>=2.0.39",
+]
