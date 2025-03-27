@@ -50,6 +50,7 @@ def process_video(video_path=0):
                 x, y, w, h = box  # координаты центра и размеры бокса
                 track = track_history[track_id]
                 class_name = classes_names[int(class_id)]
+                print(class_name)
                 track.append((float(x), float(y)))  # добавление координат цента бокса
 
                 # write.add_detection(({track_id: (float(x - w//2), float(y - h//2), float(x + w//2), float(y + h//2), class_name)}) Добавление меток в базу данных
