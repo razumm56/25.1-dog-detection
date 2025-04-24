@@ -13,3 +13,5 @@ __pycache__/
 # Log files
 *.log
 
+/detection/weights/
+/detection/test_data/
