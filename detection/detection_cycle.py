@@ -108,5 +108,6 @@ def process_video(model_path, video_path=0):
     return track_history
 
 
-track = process_video('weights/best_2.pt', "test_data/input.mp4")
+track = process_video('weights/best_middle.pt', "https://video2.interra.ru/glaz.naroda.128-0d7b2d2867/tracks-v1/mono.ts.m3u8?token=3.9CzUU5u-AAAAAAAAAEsAAAAAAAAAAJW2kv1Ovhjy7IOYANd4WdGStdzH")
+
 
