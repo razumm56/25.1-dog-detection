@@ -7,20 +7,27 @@ import numpy as np
 import cv2
 
 from dataset.SQLAlchemy_tabels import Base
-from dataset.SQLAlchemy_utils import PostgresConnection
+from dataset.SQLALchemy_utils import PostgresConnection
 from dataset.DBWriter import DBWriter, TableInsertScheme
 
-connection = PostgresConnection(host="91.239.206.123", port="29923", user="StrayDogDetectionDB", password="12345678")
+connection = PostgresConnection(
+    host="91.239.206.123", port="29923", user="StrayDogDetectionDB", password="12345678"
+)
 connection.delete_tables(["label"])
 connection.delete_tables(["frame"])
 connection.delete_tables(["video"])
 connection.create_tables(Base)
 
+
 def initialization_database():
     db_writer = DBWriter(connection)
 
-    db_video_scheme = TableInsertScheme("video", columns=["id", "path"])  # Инициализация класса схемы video
-    db_frame_scheme = TableInsertScheme( "frame", columns=["video_id", "timestamp", "dogs_num"])  # Инициализация схемы frame
+    db_video_scheme = TableInsertScheme(
+        "video", columns=["id", "path"]
+    )  # Инициализация класса схемы video
+    db_frame_scheme = TableInsertScheme(
+        "frame", columns=["video_id", "timestamp", "dogs_num"]
+    )  # Инициализация схемы frame
 
     db_writer.add_scheme(db_video_scheme)
     db_writer.add_scheme(db_frame_scheme)
@@ -28,6 +35,7 @@ def initialization_database():
     db_writer.start()
 
     return db_writer, db_video_scheme, db_frame_scheme
+
 
 def process_video(model_path, video_path=0):
     # Загрузка модели YOLO
@@ -39,7 +47,6 @@ def process_video(model_path, video_path=0):
     db_writer, db_video_scheme, db_frame_scheme = initialization_database()
 
     db_video_scheme.queue.put([0, video_path])
-
 
     if not cap.isOpened():
         print(f"Ошибка открытия {video_path}")
@@ -63,11 +70,12 @@ def process_video(model_path, video_path=0):
 
         # Проверка на наличие объектов
         if results[0].boxes is not None and results[0].boxes.id is not None:
-
             # Получение координат боксов и идентификаторов треков
             boxes = results[0].boxes.xywh.cpu()  # xywh координаты боксов
-            classes = results[0].boxes.cls.cpu().numpy() # классы
-            track_ids = results[0].boxes.id.int().cpu().tolist()  # идентификаторы треков
+            classes = results[0].boxes.cls.cpu().numpy()  # классы
+            track_ids = (
+                results[0].boxes.id.int().cpu().tolist()
+            )  # идентификаторы треков
 
             # Визуализация результатов на кадре
             annotated_frame = results[0].plot()
@@ -87,7 +95,13 @@ def process_video(model_path, video_path=0):
 
                 # Рисование линий трека
                 points = np.hstack(track).astype(np.int32).reshape((-1, 1, 2))
-                cv2.polylines(annotated_frame, [points], isClosed=False, color=(230, 230, 230), thickness=10)
+                cv2.polylines(
+                    annotated_frame,
+                    [points],
+                    isClosed=False,
+                    color=(230, 230, 230),
+                    thickness=10,
+                )
 
             # db_frame_scheme.queue.put([0, datetime.now().timestamp(), counter_objects['dog']])
 
@@ -108,6 +122,7 @@ def process_video(model_path, video_path=0):
     return track_history
 
 
-track = process_video('weights/best_last.pt', "https://video2.interra.ru/glaz.naroda.128-0d7b2d2867/tracks-v1/mono.ts.m3u8?token=3.9CzUU5u-AAAAAAAAAEsAAAAAAAAAAJW2kv1Ovhjy7IOYANd4WdGStdzH")
-
-
+track = process_video(
+    "./best.pt",
+    "https://video2.interra.ru/glaz.naroda.128-0d7b2d2867/tracks-v1/mono.ts.m3u8?token=3.9CzUU5u-AAAAAAAAAEsAAAAAAAAAAJW2kv1Ovhjy7IOYANd4WdGStdzH",
+)

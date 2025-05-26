@@ -3,7 +3,7 @@ from queue import Queue
 
 from typing import Any, List, Optional
 
-from dataset.SQLAlchemy_utils import PostgresConnection
+from dataset.SQLALchemy_utils import PostgresConnection
 
 
 class TableInsertScheme:
@@ -40,7 +40,6 @@ class DBWriter:
     @staticmethod
     def __db_saving_worker(conn, schemes):
         while True:
-            print(1111)
             with conn.session.begin():
                 for scheme in schemes.copy():
                     values = []

@@ -1,4 +1,3 @@
-from optparse import Option
 from typing import Any, List, Optional
 
 from sqlalchemy import CursorResult, Inspector, MetaData, Table, create_engine
