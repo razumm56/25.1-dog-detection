@@ -1,10 +1,10 @@
-import base64
+import asyncio
 import json
 import os
 import shutil
 import tempfile
 import threading
-from typing import Any
+import uuid
 
 import cv2
 import numpy as np
@@ -17,29 +17,10 @@ from ultralytics import YOLO
 app = FastAPI()
 
 model_path = "./weights/best_30.05.2025.pt"
+temp_files_dir = "./temp_frames/"
+if not os.path.exists(temp_files_dir):
+    os.mkdir(temp_files_dir)
 default_conf = 0.25
-
-
-def process_frame(
-    model: YOLO, frame: MatLike, image_size: int, conf: float, return_annotated: bool
-) -> dict:
-    results = model.track(
-        frame, imgsz=image_size, conf=conf, persist=True, verbose=False
-    )
-
-    return_data: dict[str, Any] = {}
-    return_data["detections"] = [result.summary() for result in results]
-
-    if return_annotated and results:
-        annotated_frame = results[0].plot()
-
-        success, buffer = cv2.imencode(".jpg", annotated_frame)
-        if not success:
-            raise RuntimeError("Failed to encode image")
-
-        return_data["image"] = base64.b64encode(buffer).decode("utf-8")
-
-    return return_data
 
 
 @app.get("/test")
@@ -50,12 +31,11 @@ def test():
 frame_model = YOLO(model_path)
 
 
-@app.post("/image")
+@app.post("/detect/image")
 async def decoded_image(
     frame: UploadFile,
     image_size: int,
     conf: float = default_conf,
-    return_annotated: bool = False,
 ):
     nparr = np.frombuffer(await frame.read(), np.uint8)
     decoded_image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
@@ -63,17 +43,17 @@ async def decoded_image(
     if decoded_image is None:
         return JSONResponse({"message": "Image is invalid"}, status_code=400)
 
-    results = process_frame(
-        frame_model, decoded_image, image_size, conf, return_annotated
-    )
+    response = {
+        "detections": process_frame(frame_model, decoded_image, image_size, conf)
+    }
 
-    return JSONResponse(content=results)
+    return JSONResponse(content=response)
 
 
 video_model = YOLO(model_path)
 
 
-@app.post("/video")
+@app.post("/detect/video")
 async def video(
     file: UploadFile,
     image_size: int,
@@ -133,47 +113,94 @@ async def video(
     return JSONResponse(content={"results": all_detections})
 
 
-@app.get("/url_stream")
-def url_stream(
+def process_frame(model: YOLO, frame: MatLike, image_size: int, conf: float) -> list:
+    results = model.track(
+        frame, imgsz=image_size, conf=conf, persist=True, verbose=False
+    )
+
+    return [result.summary() for result in results if result.summary()]
+
+
+def temporary_save_frame(frame: MatLike, dir, timeout: float) -> str:
+    frame_id = str(uuid.uuid4())
+    filename = f"{dir}/{frame_id}.jpg"
+    cv2.imwrite(filename, frame)
+
+    threading.Timer(
+        timeout, lambda: os.remove(filename) if os.path.exists(filename) else None
+    ).start()
+
+    return frame_id
+
+
+@app.get("/frame")
+def frame(frame_id: str):
+    filename = f"{frame_id}.jpg"
+    path = os.path.join(temp_files_dir, filename)
+    return FileResponse(path, media_type="image/jpeg", filename=filename)
+
+
+@app.get("/detect/url_stream")
+async def url_stream(
     request: Request,
     url: str,
     image_size: int,
     conf: float = default_conf,
-    annotate_frames=False,
 ):
-    model = YOLO(model_path)
-
+    model = YOLO("./weights/best_30.05.2025.pt")
     cap = cv2.VideoCapture(url)
 
-    # в отдельном потоке скипаем все кадры которые не успеваем обработать
-    def skip_frames(stop_event: threading.Event):
+    queue = asyncio.Queue(maxsize=1)
+    stop_event = asyncio.Event()
+
+    # функция для захвата последнего доступного кадра
+    async def capture_frames(
+        queue: asyncio.Queue, stop_event: asyncio.Event, cap: cv2.VideoCapture
+    ):
+        loop = asyncio.get_event_loop()
+
         while not stop_event.is_set() and cap.isOpened():
-            cap.grab()
+            success, frame = await loop.run_in_executor(None, lambda: cap.read())
 
-    stop_event = threading.Event()
-    grab_thread = threading.Thread(target=skip_frames, args=(stop_event,))
-    grab_thread.start()
+            if success:
+                if queue.full():
+                    try:
+                        queue.get_nowait()
+                    except asyncio.QueueEmpty:
+                        pass
+                await queue.put(frame)
+            await asyncio.sleep(0.01)
 
-    # обработка последнего доступного кадра
-    async def generator():
+    loop = asyncio.get_event_loop()
+    grabber_task = loop.create_task(capture_frames(queue, stop_event, cap))
+
+    # функция обработки кадров
+    async def gen():
         try:
+            frame = None
             while True:
                 if await request.is_disconnected():
                     break
 
-                success, frame = cap.retrieve()
+                try:
+                    frame = await asyncio.wait_for(queue.get(), timeout=1)
+                except asyncio.TimeoutError:
+                    continue
 
-                if success:
-                    detection_result = process_frame(
-                        model, frame, image_size, conf, annotate_frames
-                    )
-                    detection_result["timestamp"] = cap.get(cv2.CAP_PROP_POS_MSEC)
-                    detection_result["frame"] = cap.get(cv2.CAP_PROP_POS_FRAMES)
-                    yield (json.dumps(detection_result) + "\n")
+                data = {}
+                detection_results = model.track(
+                    frame, imgsz=image_size, conf=conf, persist=True, verbose=False
+                )
+                data["detections"] = [
+                    result.summary() for result in detection_results if result.summary()
+                ]
+                data["frame_id"] = temporary_save_frame(frame, temp_files_dir, 60)
+
+                yield json.dumps(data) + "\n"
 
         finally:
             stop_event.set()
-            grab_thread.join()
             cap.release()
+            grabber_task.cancel()
 
-    return StreamingResponse(generator(), media_type="text/event-stream")
+    return StreamingResponse(gen(), media_type="text/event-stream")
